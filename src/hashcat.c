@@ -67,6 +67,7 @@
 #ifdef WITH_BRAIN
 #include "brain.h"
 #endif
+#include "candidate_progress.h"
 
 // A round ends with -1 on an error, and with -10 when autotune failed on every device, which
 // inner2_autotune () has already announced. A benchmark over every hash mode skips that mode, as
@@ -287,10 +288,14 @@ static int inner2_loop (hashcat_ctx_t *hashcat_ctx)
 
   const bool round_continues = ((user_options_extra->association_autosplit == true) && (status_ctx->words_walk_base > 0));
 
+  const candidate_progress_ctx_t *cp = hashcat_ctx->candidate_progress_ctx;
+
+  const bool cp_window = ((cp->enabled == true) && (cp->window_active == true));
+
   // msec_paused is subtracted from the elapsed time, so it belongs to whatever timer_running is
   // measuring. A continuation round leaves that timer alone, so it must leave this alone too.
 
-  if (round_continues == false)
+  if ((round_continues == false) && (cp_window == false))
   {
     status_progress_reset (hashcat_ctx);
 
@@ -314,7 +319,7 @@ static int inner2_loop (hashcat_ctx_t *hashcat_ctx)
 
   bool restored = false;
 
-  if (restore_ctx->restore_execute == true)
+  if ((restore_ctx->restore_execute == true) && (cp_window == false))
   {
     restore_ctx->restore_execute = false;
 
@@ -422,7 +427,7 @@ static int inner2_loop (hashcat_ctx_t *hashcat_ctx)
 
   const bool one_round = ((mask_ctx->masks_cnt <= 1) && (straight_ctx->dicts_cnt <= 1));
 
-  if (user_options->skip > walk_first)
+  if ((cp_window == false) && (user_options->skip > walk_first))
   {
     status_ctx->words_skip = user_options->skip - walk_first;
 
@@ -445,7 +450,7 @@ static int inner2_loop (hashcat_ctx_t *hashcat_ctx)
     }
   }
 
-  if (user_options->limit > 0)
+  if ((cp_window == false) && (user_options->limit > 0))
   {
     if (user_options->limit <= walk_first)
     {
@@ -461,7 +466,12 @@ static int inner2_loop (hashcat_ctx_t *hashcat_ctx)
 
   // A restored session is already where it belongs, and --restore overrides --skip.
 
-  if (restored == false)
+  if (cp_window == true)
+  {
+    status_ctx->words_off = cp->window_start;
+    status_ctx->words_cur = cp->window_start;
+  }
+  else if (restored == false)
   {
     status_ctx->words_off = status_ctx->words_skip;
     status_ctx->words_cur = status_ctx->words_off;
@@ -987,6 +997,62 @@ static int inner1_loop (hashcat_ctx_t *hashcat_ctx)
    */
 
   EVENT (EVENT_INNERLOOP2_STARTING);
+
+  if (candidate_progress_enabled (hashcat_ctx) == true)
+  {
+    const u32 rules_cnt = candidate_progress_rules_cnt (hashcat_ctx);
+
+    bool cp_ran = false;
+
+    for (u32 rule_pos = 0; rule_pos < rules_cnt; rule_pos++)
+    {
+      const u32 rule_all_pos = candidate_progress_rule_all_pos (hashcat_ctx, rule_pos);
+
+      if (candidate_progress_begin_pass (hashcat_ctx, rule_all_pos) == -1)
+      {
+        rc_inner1 = round_failed (hashcat_ctx, -1);
+
+        break;
+      }
+
+      straight_ctx->kernel_rules_buf = straight_ctx->kernel_rules_all_buf + rule_all_pos;
+      straight_ctx->kernel_rules_cnt = 1;
+
+      if (backend_session_update_rules (hashcat_ctx) == -1)
+      {
+        rc_inner1 = round_failed (hashcat_ctx, -1);
+
+        break;
+      }
+
+      u64 window_start = 0;
+      u64 window_end   = 0;
+
+      while (candidate_progress_next_window (hashcat_ctx, &window_start, &window_end) == true)
+      {
+        cp_ran = true;
+
+        if (round_failed (hashcat_ctx, inner2_loop (hashcat_ctx)) == -10) rc_inner1 = -10;
+
+        if (status_ctx->run_main_level3 == false) break;
+      }
+
+      candidate_progress_end_pass (hashcat_ctx);
+
+      if (status_ctx->run_main_level3 == false) break;
+    }
+
+    straight_ctx->kernel_rules_buf = straight_ctx->kernel_rules_all_buf;
+    straight_ctx->kernel_rules_cnt = straight_ctx->kernel_rules_all_cnt;
+
+    if ((cp_ran == false) && (rc_inner1 == 0)) status_ctx->devices_status = STATUS_EXHAUSTED;
+
+    candidate_progress_print_stats (hashcat_ctx);
+
+    EVENT (EVENT_INNERLOOP2_FINISHED);
+
+    return rc_inner1;
+  }
 
   if (restore_ctx->rd)
   {
@@ -2136,6 +2202,7 @@ int hashcat_init (hashcat_ctx_t *hashcat_ctx, void (*event) (const u32, struct h
   hashcat_ctx->bitmap_ctx         = (bitmap_ctx_t *)          hcmalloc (sizeof (bitmap_ctx_t));
   hashcat_ctx->brain_ctx          = (brain_ctx_t *)           hcmalloc (sizeof (brain_ctx_t));
   hashcat_ctx->bridge_ctx         = (bridge_ctx_t *)          hcmalloc (sizeof (bridge_ctx_t));
+  hashcat_ctx->candidate_progress_ctx = (candidate_progress_ctx_t *) hcmalloc (sizeof (candidate_progress_ctx_t));
   hashcat_ctx->combinator_ctx     = (combinator_ctx_t *)      hcmalloc (sizeof (combinator_ctx_t));
   hashcat_ctx->cpt_ctx            = (cpt_ctx_t *)             hcmalloc (sizeof (cpt_ctx_t));
   hashcat_ctx->debugfile_ctx      = (debugfile_ctx_t *)       hcmalloc (sizeof (debugfile_ctx_t));
@@ -2189,6 +2256,7 @@ void hashcat_destroy (hashcat_ctx_t *hashcat_ctx)
   hcfree (hashcat_ctx->bitmap_ctx);
   hcfree (hashcat_ctx->brain_ctx);
   hcfree (hashcat_ctx->bridge_ctx);
+  hcfree (hashcat_ctx->candidate_progress_ctx);
   hcfree (hashcat_ctx->combinator_ctx);
   hcfree (hashcat_ctx->cpt_ctx);
   hcfree (hashcat_ctx->debugfile_ctx);

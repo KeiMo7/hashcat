@@ -1066,6 +1066,9 @@ typedef enum user_options_defaults
   BENCHMARK                 = false,
   BITMAP_MAX                = 24,
   BITMAP_MIN                = 10,
+  CANDIDATE_DEDUP           = true,
+  CANDIDATE_PROGRESS        = false,
+  CANDIDATE_PROGRESS_PRUNE  = false,
   #ifdef WITH_BRAIN
   BRAIN_CLIENT              = false,
   BRAIN_CLIENT_FEATURES     = 3,
@@ -1206,6 +1209,9 @@ typedef enum user_options_map
   IDX_BYPASS_THRESHOLD          = 0xff84,
   IDX_BYPASS_DELAY              = 0xff85,
   IDX_BYPASS_ETA                = 0xff91,
+  IDX_CANDIDATE_DEDUP_DISABLE   = 0xff95,
+  IDX_CANDIDATE_PROGRESS        = 0xff96,
+  IDX_CANDIDATE_PROGRESS_PRUNE  = 0xff97,
   IDX_COLOR_CRACKED             = 0xff59,
   IDX_BRIDGE_PARAMETER1         = 0xff80,
   IDX_BRIDGE_PARAMETER2         = 0xff81,
@@ -2965,6 +2971,49 @@ typedef struct restore_data
 
 } restore_data_t;
 
+typedef struct candidate_progress_ctx
+{
+  bool enabled;
+  bool use_records;
+
+  bool window_active;
+  u64  window_start;
+  u64  window_end;
+
+  char *root_dir;
+  char *run_dir;
+
+  char run_id[33];
+  char source_id[33];
+  char ruleset_id[33];
+  char current_rule_id[33];
+
+  u64 base_words;
+  u64 next_seq;
+
+  u64 tried_before;
+  u64 skipped;
+  u64 new_tried;
+  u64 dedup_skipped;
+
+  bool stats_printed;
+
+  void *records;
+  void *gaps;
+
+  u32  gaps_cnt;
+  u32  gaps_pos;
+
+  u32  rules_cnt;
+
+  void *rules;
+
+  bool mutex_inited;
+
+  hc_thread_mutex_t mux_file;
+
+} candidate_progress_ctx_t;
+
 typedef struct pidfile_data
 {
   u32 pid;
@@ -3159,6 +3208,9 @@ typedef struct user_options
   bool         backend_ignore_hip;
   bool         backend_ignore_metal;
   bool         backend_ignore_opencl;
+  bool         candidate_dedup;
+  bool         candidate_progress;
+  bool         candidate_progress_prune;
   bool         optimized_kernel;
   bool         multiply_accel;
   bool         outfile_autohex;
@@ -3441,6 +3493,9 @@ typedef struct straight_ctx
 
   u32             kernel_rules_cnt;
   kernel_rule_t  *kernel_rules_buf;
+
+  u32             kernel_rules_all_cnt;
+  kernel_rule_t  *kernel_rules_all_buf;
 
   char **dicts;
   u32    dicts_pos;
@@ -4772,6 +4827,7 @@ struct hashcat_ctx
   brain_ctx_t           *brain_ctx;
   bitmap_ctx_t          *bitmap_ctx;
   bridge_ctx_t          *bridge_ctx;
+  candidate_progress_ctx_t *candidate_progress_ctx;
   combinator_ctx_t      *combinator_ctx;
   cpt_ctx_t             *cpt_ctx;
   debugfile_ctx_t       *debugfile_ctx;

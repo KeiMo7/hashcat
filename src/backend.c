@@ -19104,6 +19104,31 @@ void backend_session_reset (hashcat_ctx_t *hashcat_ctx)
   backend_ctx->kernel_power_final = 0;
 }
 
+int backend_session_update_rules (hashcat_ctx_t *hashcat_ctx)
+{
+  backend_ctx_t              *backend_ctx         = hashcat_ctx->backend_ctx;
+  const straight_ctx_t       *straight_ctx        = hashcat_ctx->straight_ctx;
+  const user_options_extra_t *user_options_extra  = hashcat_ctx->user_options_extra;
+
+  if (backend_ctx->enabled == false) return 0;
+
+  if (user_options_extra->attack_kern != ATTACK_KERN_STRAIGHT) return 0;
+
+  const u64 size_rules = (u64) straight_ctx->kernel_rules_cnt * sizeof (kernel_rule_t);
+
+  for (int backend_devices_idx = 0; backend_devices_idx < backend_ctx->backend_devices_cnt; backend_devices_idx++)
+  {
+    hc_device_param_t *device_param = &backend_ctx->devices_param[backend_devices_idx];
+
+    if (device_param->skipped == true) continue;
+    if (device_param->skipped_warning == true) continue;
+
+    if (hc_dev_memcpy_h2d (hashcat_ctx, device_param, device_param->d_buf[HC_DEV_BUF_RULES], 0, straight_ctx->kernel_rules_buf, size_rules) == -1) return -1;
+  }
+
+  return 0;
+}
+
 int backend_session_update_combinator (hashcat_ctx_t *hashcat_ctx)
 {
   combinator_ctx_t *combinator_ctx = hashcat_ctx->combinator_ctx;

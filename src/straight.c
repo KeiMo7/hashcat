@@ -19,6 +19,7 @@
 #include "mpsp.h"
 #include "feed_ctx.h"
 #include "feed.h"
+#include "candidate_progress.h"
 #include "straight.h"
 #include "status_rc.h"
 
@@ -713,11 +714,11 @@ int straight_ctx_init (hashcat_ctx_t *hashcat_ctx)
 
   if ((user_options->rp_files_cnt == 0) && (user_options->rp_gen == 0))
   {
-    straight_ctx->kernel_rules_buf = (kernel_rule_t *) hcmalloc (sizeof (kernel_rule_t));
+    straight_ctx->kernel_rules_all_buf = (kernel_rule_t *) hcmalloc (sizeof (kernel_rule_t));
 
-    straight_ctx->kernel_rules_buf[0].cmds[0] = RULE_OP_MANGLE_NOOP;
+    straight_ctx->kernel_rules_all_buf[0].cmds[0] = RULE_OP_MANGLE_NOOP;
 
-    straight_ctx->kernel_rules_cnt = 1;
+    straight_ctx->kernel_rules_all_cnt = 1;
   }
   else
   {
@@ -725,15 +726,20 @@ int straight_ctx_init (hashcat_ctx_t *hashcat_ctx)
     {
       EVENT (EVENT_RULESFILES_PARSE_PRE);
 
-      if (kernel_rules_load (hashcat_ctx, &straight_ctx->kernel_rules_buf, &straight_ctx->kernel_rules_cnt) == -1) return -1;
+      if (kernel_rules_load (hashcat_ctx, &straight_ctx->kernel_rules_all_buf, &straight_ctx->kernel_rules_all_cnt) == -1) return -1;
 
       EVENT (EVENT_RULESFILES_PARSE_POST);
     }
     else if (user_options->rp_gen)
     {
-      if (kernel_rules_generate (hashcat_ctx, &straight_ctx->kernel_rules_buf, &straight_ctx->kernel_rules_cnt, user_options->rp_gen_func_sel) == -1) return -1;
+      if (kernel_rules_generate (hashcat_ctx, &straight_ctx->kernel_rules_all_buf, &straight_ctx->kernel_rules_all_cnt, user_options->rp_gen_func_sel) == -1) return -1;
     }
   }
+
+  straight_ctx->kernel_rules_buf = straight_ctx->kernel_rules_all_buf;
+  straight_ctx->kernel_rules_cnt = straight_ctx->kernel_rules_all_cnt;
+
+  if (candidate_progress_init (hashcat_ctx, straight_ctx->kernel_rules_all_buf, straight_ctx->kernel_rules_all_cnt) == -1) return -1;
 
   /**
    * wordlist based work
@@ -792,7 +798,9 @@ void straight_ctx_destroy (hashcat_ctx_t *hashcat_ctx)
   }
 
   hcfree (straight_ctx->dicts);
-  hcfree (straight_ctx->kernel_rules_buf);
+  candidate_progress_destroy (hashcat_ctx);
+
+  hcfree (straight_ctx->kernel_rules_all_buf);
 
   memset (straight_ctx, 0, sizeof (straight_ctx_t));
 }

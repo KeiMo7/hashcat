@@ -91,6 +91,9 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
   user_options->bridge_parameter2          = NULL;
   user_options->bridge_parameter3          = NULL;
   user_options->bridge_parameter4          = NULL;
+  user_options->candidate_dedup             = CANDIDATE_DEDUP;
+  user_options->candidate_progress          = CANDIDATE_PROGRESS;
+  user_options->candidate_progress_prune    = CANDIDATE_PROGRESS_PRUNE;
   user_options->cpu_affinity               = NULL;
   user_options->custom_charset_1           = NULL;
   user_options->custom_charset_2           = NULL;
@@ -359,6 +362,9 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
       case IDX_VERSION:                   user_options->version                   = true;                            break;
       case IDX_RESTORE:                   user_options->restore                   = true;                            break;
       case IDX_RESTORE_POSITION:          user_options->restore_position          = true;                            break;
+      case IDX_CANDIDATE_DEDUP_DISABLE:   user_options->candidate_dedup           = false;                           break;
+      case IDX_CANDIDATE_PROGRESS:        user_options->candidate_progress        = true;                            break;
+      case IDX_CANDIDATE_PROGRESS_PRUNE:  user_options->candidate_progress_prune  = true;                            break;
       case IDX_QUIET:                     user_options->quiet                     = true;                            break;
       case IDX_SHOW:                      user_options->show                      = true;                            break;
       case IDX_DEPRECATED_CHECK_DISABLE:  user_options->deprecated_check          = false;                           break;
@@ -3519,6 +3525,9 @@ void user_options_logger (hashcat_ctx_t *hashcat_ctx)
   logfile_top_uint   (user_options->kernel_loops);
   logfile_top_uint   (user_options->kernel_threads);
   logfile_top_uint   (user_options->keyspace);
+  logfile_top_uint   (user_options->candidate_progress);
+  logfile_top_uint   (user_options->candidate_dedup);
+  logfile_top_uint   (user_options->candidate_progress_prune);
   logfile_top_uint   (user_options->total_candidates);
   logfile_top_uint   (user_options->left);
   logfile_top_uint   (user_options->length_sort_disable);

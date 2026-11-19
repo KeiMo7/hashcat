@@ -564,6 +564,24 @@ static const option_rule_t option_rules[OPTION_COUNT] =
   [OPT_BRIDGE_PARAMETER2] = BRIDGE_PARAMETER_RULE,
   [OPT_BRIDGE_PARAMETER3] = BRIDGE_PARAMETER_RULE,
   [OPT_BRIDGE_PARAMETER4] = BRIDGE_PARAMETER_RULE,
+  [OPT_CANDIDATE_DEDUP_DISABLE] =
+  {
+    .type         = OPTION_TYPE_FLAG,
+    .actions      = ACT_CRACK,
+    .requires     = { OPT_CANDIDATE_PROGRESS },
+  },
+  [OPT_CANDIDATE_PROGRESS] =
+  {
+    .type         = OPTION_TYPE_FLAG,
+    .actions      = ACT_CRACK,
+    .excludes     = { OPT_SKIP, OPT_LIMIT },
+  },
+  [OPT_CANDIDATE_PROGRESS_PRUNE] =
+  {
+    .type         = OPTION_TYPE_FLAG,
+    .actions      = ACT_CRACK,
+    .requires     = { OPT_CANDIDATE_PROGRESS },
+  },
   [OPT_CACHE_PATH] =
   {
     .type         = OPTION_TYPE_STR,
@@ -2418,6 +2436,9 @@ static u32 table_struct_given (const user_options_t *user_options, const option_
     case OPT_BRIDGE_PARAMETER2:         count = (uo->bridge_parameter2         != NULL);  *arg   = uo->bridge_parameter2;                     break;
     case OPT_BRIDGE_PARAMETER3:         count = (uo->bridge_parameter3         != NULL);  *arg   = uo->bridge_parameter3;                     break;
     case OPT_BRIDGE_PARAMETER4:         count = (uo->bridge_parameter4         != NULL);  *arg   = uo->bridge_parameter4;                     break;
+    case OPT_CANDIDATE_DEDUP_DISABLE:   count = (uo->candidate_dedup           == false);                                                     break;
+    case OPT_CANDIDATE_PROGRESS:        count = (uo->candidate_progress        == true);                                                      break;
+    case OPT_CANDIDATE_PROGRESS_PRUNE:  count = (uo->candidate_progress_prune  == true);                                                      break;
     case OPT_CACHE_PATH:                count = (uo->cache_path                != NULL);  *arg   = uo->cache_path;                            break;
     case OPT_CPU_AFFINITY:              count = (uo->cpu_affinity              != NULL);  *arg   = uo->cpu_affinity;                          break;
     case OPT_CUSTOM_CHARSET_1:          count = (uo->custom_charset_1          != NULL);  *arg   = uo->custom_charset_1;                      break;

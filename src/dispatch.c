@@ -23,6 +23,7 @@
 #include "convert.h"
 #include "user_options.h"
 #include "bridges.h"
+#include "candidate_progress.h"
 
 #ifdef WITH_BRAIN
 #include "brain.h"
@@ -211,7 +212,14 @@ static u64 get_work (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param
   // window stops part way into it as well.
 
   const u64 words_off  = status_ctx->words_off;
-  const u64 words_base = (status_ctx->words_limit == 0) ? status_ctx->words_base : MIN (status_ctx->words_limit, status_ctx->words_base);
+  u64 words_base = (status_ctx->words_limit == 0) ? status_ctx->words_base : MIN (status_ctx->words_limit, status_ctx->words_base);
+
+  const candidate_progress_ctx_t *cp = hashcat_ctx->candidate_progress_ctx;
+
+  if ((cp->enabled == true) && (cp->window_active == true))
+  {
+    words_base = MIN (words_base, cp->window_end);
+  }
 
   device_param->words_off = words_off;
 
@@ -1240,13 +1248,26 @@ static int pipe_run (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param
         break;
       }
 
+      if ((candidate_progress_enabled (hashcat_ctx) == true)
+       && (status_ctx->devices_status != STATUS_ABORTED)
+       && (status_ctx->devices_status != STATUS_ABORTED_CHECKPOINT)
+       && (status_ctx->devices_status != STATUS_ABORTED_RUNTIME)
+       && (status_ctx->devices_status != STATUS_ABORTED_FINISH)
+       && (status_ctx->devices_status != STATUS_QUIT)
+       && (status_ctx->devices_status != STATUS_BYPASS)
+       && (status_ctx->devices_status != STATUS_ERROR))
+      {
+        candidate_progress_mark_batch (hashcat_ctx, words_off, words_fin, pws_cnt);
+      }
+
       // Not gated on the producer any more. Keyspace reservation runs on the device-side feed path
       // too, and a reservation that is never committed is released when this client disconnects.
 
       #ifdef WITH_BRAIN
       if (user_options->brain_client == true)
       {
-        if ((status_ctx->devices_status != STATUS_ABORTED)
+        if ((candidate_progress_enabled (hashcat_ctx) == true)
+         && (status_ctx->devices_status != STATUS_ABORTED)
          && (status_ctx->devices_status != STATUS_ABORTED_RUNTIME)
          && (status_ctx->devices_status != STATUS_QUIT)
          && (status_ctx->devices_status != STATUS_BYPASS)
@@ -1630,6 +1651,17 @@ static int calc (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param)
         pipe_acc (device_param, PIPE_COPY, &timer_copy);
 
         if (run_cracker (hashcat_ctx, device_param, -1, device_param->pws_cnt) == -1) return -1;
+
+        if ((status_ctx->devices_status != STATUS_ABORTED)
+         && (status_ctx->devices_status != STATUS_ABORTED_CHECKPOINT)
+         && (status_ctx->devices_status != STATUS_ABORTED_RUNTIME)
+         && (status_ctx->devices_status != STATUS_ABORTED_FINISH)
+         && (status_ctx->devices_status != STATUS_QUIT)
+         && (status_ctx->devices_status != STATUS_BYPASS)
+         && (status_ctx->devices_status != STATUS_ERROR))
+        {
+          candidate_progress_mark_batch (hashcat_ctx, words_off, words_fin, device_param->pws_cnt);
+        }
 
         // The range has been tested, so the reservation becomes permanent. An aborted run is the one
         // case where it must not: the commit promotes this client's reservations for good, and a
